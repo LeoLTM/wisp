@@ -1,8 +1,10 @@
-# sendspin-armv6
+# wisp
 
-Headless [Sendspin](https://github.com/Sendspin/sendspin-cpp) audio client for ARMv6 devices like the **Raspberry Pi Zero W**.
+> *wisp is an independent, unofficial Sendspin client. It is not affiliated with, endorsed, or certified by the Open Home Foundation or the Sendspin project. "Sendspin" is a trademark of the Open Home Foundation.*
 
-Plays music through available ALSA devices. No controls, just audio output as a systemd daemon, with an optional small OLED screen showing what's playing.
+**wisp** is light and barely noticeable: a headless audio client for the [Sendspin](https://github.com/Sendspin/sendspin-cpp) protocol for ARMv6 devices like the **Raspberry Pi Zero W**.
+
+Plays music through available ALSA devices. No controls, just audio output as a systemd daemon (`wispd`), with an optional small OLED screen showing what's playing.
 
 ## How it works
 
@@ -14,7 +16,7 @@ Plays music through available ALSA devices. No controls, just audio output as a 
 
 > You can just run the `scripts/install.sh` script to do all of this automatically, but the manual steps are documented below if you want to understand what's going on or do it yourself.
 > ```bash
->  curl -fsSL https://raw.githubusercontent.com/LeoLTM/sendspin-armv6/main/scripts/install.sh \
+>  curl -fsSL https://raw.githubusercontent.com/LeoLTM/wisp/main/scripts/install.sh \
 >  | sudo bash
 > ```
 
@@ -23,22 +25,22 @@ Plays music through available ALSA devices. No controls, just audio output as a 
 Grab the latest release from the [Releases](../../releases) page:
 
 ```bash
-wget https://github.com/LeoLTM/sendspin-armv6/releases/latest/download/sendspin-armv6-linux-armv6-release.tar.gz
-mkdir sendspin-armv6 && tar -xzf sendspin-armv6-linux-armv6-release.tar.gz -C sendspin-armv6
+wget https://github.com/LeoLTM/wisp/releases/latest/download/wisp-linux-armv6-release.tar.gz
+mkdir wisp && tar -xzf wisp-linux-armv6-release.tar.gz -C wispd
 ```
 
 ### 2. Install the binary
 
 ```bash
-sudo cp sendspin-armv6/sendspin-armv6 /usr/local/bin/
-sudo chmod +x /usr/local/bin/sendspin-armv6
+sudo cp wisp/wispd /usr/local/bin/
+sudo chmod +x /usr/local/bin/wispd
 ```
 
 ### 3. Configure
 
 ```bash
-sudo cp sendspin-armv6/sendspin-armv6.conf /etc/sendspin-armv6.conf
-sudo nano /etc/sendspin-armv6.conf
+sudo cp wisp/wispd.conf /etc/wispd.conf
+sudo nano /etc/wispd.conf
 ```
 
 Set `server_url` to your Sendspin server's WebSocket URL:
@@ -56,16 +58,16 @@ initial_volume = 80
 ### 4. Set up the systemd daemon
 
 ```bash
-sudo cp sendspin-armv6/sendspin-armv6.service /etc/systemd/system/
+sudo cp wisp/wispd.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now sendspin-armv6
+sudo systemctl enable --now wispd
 ```
 
 ### 5. Verify
 
 ```bash
-sudo systemctl status sendspin-armv6
-journalctl -u sendspin-armv6 -f
+sudo systemctl status wispd
+journalctl -u wispd -f
 ```
 
 ## Audio output
@@ -91,7 +93,7 @@ The USB soundcard in this example is `card 1, device 0` → device string is `pl
 
 ### Configure the device
 
-Set the `device` key in `/etc/sendspin-armv6.conf`:
+Set the `device` key in `/etc/wispd.conf`:
 
 ```ini
 device = plughw:1,0
@@ -100,7 +102,7 @@ device = plughw:1,0
 Then restart the service:
 
 ```bash
-sudo systemctl restart sendspin-armv6
+sudo systemctl restart wispd
 ```
 
 ### Set the USB soundcard as default (optional)
@@ -150,7 +152,7 @@ i2cdetect -y 1
 
 ### Configure
 
-Add to `/etc/sendspin-armv6.conf` and restart the service:
+Add to `/etc/wispd.conf` and restart the service:
 
 ```ini
 display = ssd1306          # or sh1106 for 1.3" panels; none to disable
@@ -170,7 +172,7 @@ To turn the display off again, set `display = none` (or remove the line) and res
 | Key | Required | Default | Description |
 |---|---|---|---|
 | `server_url` | **yes** | — | WebSocket URL of the Sendspin server |
-| `name` | no | `sendspin-armv6` | Friendly name shown in the Sendspin UI |
+| `name` | no | `wispd` | Friendly name shown in the Sendspin UI |
 | `log_level` | no | `info` | `none`, `error`, `warn`, `info`, `debug`, `verbose` |
 | `device` | no | Default system audio device (`aplay -L`) | ALSA device string for audio output (e.g. `plughw:1,0`) |
 | `initial_volume` | no | Server-controlled | Initial hardware volume at startup (0–100) |
@@ -185,12 +187,12 @@ To turn the display off again, set `display = none` (or remove the line) and res
 
 ## Upgrading
 
-Your config at `/etc/sendspin-armv6.conf` is **never touched** during an upgrade.
+Your config at `/etc/wispd.conf` is **never touched** during an upgrade.
 
 ### Upgrade script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LeoLTM/sendspin-armv6/main/scripts/upgrade.sh \
+curl -fsSL https://raw.githubusercontent.com/LeoLTM/wisp/main/scripts/upgrade.sh \
   | sudo bash
 ```
 
@@ -198,15 +200,15 @@ curl -fsSL https://raw.githubusercontent.com/LeoLTM/sendspin-armv6/main/scripts/
 
 ```bash
 # 1. Download the new release (same as installation step 1)
-wget https://github.com/LeoLTM/sendspin-armv6/releases/latest/download/sendspin-armv6-linux-armv6-release.tar.gz
-mkdir sendspin-tmp && tar -xzf sendspin-armv6-linux-armv6-release.tar.gz -C sendspin-tmp
+wget https://github.com/LeoLTM/wisp/releases/latest/download/wisp-linux-armv6-release.tar.gz
+mkdir sendspin-tmp && tar -xzf wisp-linux-armv6-release.tar.gz -C sendspin-tmp
 
 # 2. Stop, replace binary, reload service file, start
-sudo systemctl stop sendspin-armv6
-sudo cp sendspin-tmp/sendspin-armv6 /usr/local/bin/
-sudo cp sendspin-tmp/sendspin-armv6.service /etc/systemd/system/
+sudo systemctl stop wispd
+sudo cp sendspin-tmp/wispd /usr/local/bin/
+sudo cp sendspin-tmp/wispd.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl start sendspin-armv6
+sudo systemctl start wispd
 ```
 
 ## Uninstall
@@ -214,21 +216,21 @@ sudo systemctl start sendspin-armv6
 ### Uninstall script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LeoLTM/sendspin-armv6/main/scripts/uninstall.sh \
+curl -fsSL https://raw.githubusercontent.com/LeoLTM/wisp/main/scripts/uninstall.sh \
   | sudo bash
 ```
 
 ### Manual uninstall
 
 ```bash
-sudo systemctl stop sendspin-armv6
-sudo systemctl disable sendspin-armv6
-sudo rm /usr/local/bin/sendspin-armv6
-sudo rm /etc/systemd/system/sendspin-armv6.service
+sudo systemctl stop wispd
+sudo systemctl disable wispd
+sudo rm /usr/local/bin/wispd
+sudo rm /etc/systemd/system/wispd.service
 sudo systemctl daemon-reload
 
 # Optional: remove config file if you don't plan to reinstall or want to start fresh
-sudo rm /etc/sendspin-armv6.conf
+sudo rm /etc/wispd.conf
 ```
 
 ## Troubleshooting
@@ -236,8 +238,8 @@ sudo rm /etc/sendspin-armv6.conf
 **Crash-loop / SEGV at startup** — the service stops restarting after 5 rapid failures. To re-enable after fixing the issue:
 
 ```bash
-sudo systemctl reset-failed sendspin-armv6
-sudo systemctl start sendspin-armv6
+sudo systemctl reset-failed wispd
+sudo systemctl start wispd
 ```
 
 Common causes:
@@ -246,7 +248,7 @@ Common causes:
 - Network not ready — check that the Pi can reach the server IP before the service starts
 - Wrong `server_url` in the config — verify with `curl http://<ip>:8927/`
 
-**Display stays blank** — check `journalctl -u sendspin-armv6` for `Display:` messages. Make sure I2C is enabled and the address in `i2cdetect -y 1` matches `display_i2c_address`. A 1.3" panel that shows noise or is shifted by two pixels needs `display = sh1106`.
+**Display stays blank** — check `journalctl -u wispd` for `Display:` messages. Make sure I2C is enabled and the address in `i2cdetect -y 1` matches `display_i2c_address`. A 1.3" panel that shows noise or is shifted by two pixels needs `display = sh1106`.
 
 **No audio / aplay errors** — run `aplay -l` to find the correct device name and set it with `device = plughw:X,Y` in the config.
 
@@ -269,8 +271,14 @@ cmake -B build \
 cmake --build build
 ```
 
-The binary will be at `build/sendspin-armv6`.
+The binary will be at `build/wispd`.
+
+## Migrating from sendspin-armv6
+
+This project was formerly called `sendspin-armv6`. Running the upgrade script migrates an existing installation automatically: the old service is stopped and removed, `/etc/sendspin-armv6.conf` is moved to `/etc/wispd.conf`, and the `wispd` service is enabled. The `name` default changed from `sendspin-armv6` to `wisp`; set `name` explicitly if you want to keep the old one.
 
 ## License
 
 Apache-2.0
+
+Built on [sendspin-cpp](https://github.com/Sendspin/sendspin-cpp) (Apache-2.0).
