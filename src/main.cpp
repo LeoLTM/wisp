@@ -1,4 +1,4 @@
-/// @file Headless Sendspin client daemon for ARMv6 (Raspberry Pi Zero W).
+/// @file wispd: headless Sendspin client daemon for ARMv6 (Raspberry Pi Zero W).
 ///
 /// Connects to a Sendspin server and plays audio through the 3.5mm jack
 /// via aplay (ALSA).  Designed to run as a systemd service.
@@ -25,8 +25,8 @@
 
 using namespace sendspin;
 
-static constexpr const char* DEFAULT_CONFIG_PATH = "/etc/sendspin-armv6.conf";
-static constexpr const char* VERSION = "0.1.9";
+static constexpr const char* DEFAULT_CONFIG_PATH = "/etc/wispd.conf";
+static constexpr const char* VERSION = "0.2.0";
 
 static std::atomic<bool> running{true};
 
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
             case 'c': config_path = optarg; break;
             case 't': idle_timeout_override = std::atoi(optarg); break;
             case 'h': print_usage(argv[0]); return 0;
-            case 'V': fprintf(stdout, "sendspin-armv6 %s\n", VERSION); return 0;
+            case 'V': fprintf(stdout, "wispd %s\n", VERSION); return 0;
             default: print_usage(argv[0]); return 1;
         }
     }
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     // --- STARTUP LOGGING BLOCK ---
     fprintf(stderr, "\n");
     fprintf(stderr, "=================================================================\n");
-    fprintf(stderr, " Sendspin ARMv6 Client - Version: %s\n", VERSION);
+    fprintf(stderr, " wisp (wispd) - Version: %s\n", VERSION);
     fprintf(stderr, " Build Date: %s %s\n", __DATE__, __TIME__);
     fprintf(stderr, "=================================================================\n");
     fprintf(stderr, " Active Configuration:\n");
@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
         if (gethostname(hbuf, sizeof(hbuf)) == 0 && hbuf[0] != '\0') {
             client_id = hbuf;
         } else {
-            client_id = "sendspin-armv6";
+            client_id = "wispd";
         }
     }
 
@@ -160,10 +160,10 @@ int main(int argc, char* argv[]) {
 
     // Configure client
     SendspinClientConfig client_config;
-    client_config.client_id = "sendspin-armv6-" + client_id;
+    client_config.client_id = "wispd-" + client_id;
     client_config.name = cfg.name;
-    client_config.product_name = "sendspin-armv6";
-    client_config.manufacturer = "sendspin-armv6";
+    client_config.product_name = "wisp";
+    client_config.manufacturer = "wisp";
     client_config.software_version = VERSION;
 
     SendspinClient client(std::move(client_config));

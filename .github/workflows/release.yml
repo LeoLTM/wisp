@@ -21,12 +21,12 @@ jobs:
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
-          name: sendspin-armv6-linux-armv6-release
+          name: wisp-linux-armv6-release
 
       - name: Download debug artifact
         uses: actions/download-artifact@v4
         with:
-          name: sendspin-armv6-linux-armv6-debug
+          name: wisp-linux-armv6-debug
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -34,6 +34,6 @@ jobs:
           # Automatically extracts tag name from ref
           tag_name: ${{ github.ref_name }}
           files: |
-            sendspin-armv6-linux-armv6-release.tar.gz
-            sendspin-armv6-linux-armv6-debug.tar.gz
+            wisp-linux-armv6-release.tar.gz
+            wisp-linux-armv6-debug.tar.gz
           generate_release_notes: true

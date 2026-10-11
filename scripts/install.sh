@@ -1,16 +1,16 @@
 #!/bin/bash
-# Install sendspin-armv6 from the latest release.
+# Install wispd from the latest release.
 # Usage: curl -fsSL .../install.sh | sudo bash
-# An example config is written to /etc/sendspin-armv6.conf if one does not
+# An example config is written to /etc/wispd.conf if one does not
 # already exist. Edit it before starting the service.
 set -euo pipefail
 
-BINARY=/usr/local/bin/sendspin-armv6
-CONFIG_FILE=/etc/sendspin-armv6.conf
-SERVICE_FILE=/etc/systemd/system/sendspin-armv6.service
-SERVICE=sendspin-armv6
-REPO="LeoLTM/sendspin-armv6"
-ARCHIVE=sendspin-armv6-linux-armv6-release.tar.gz
+BINARY=/usr/local/bin/wispd
+CONFIG_FILE=/etc/wispd.conf
+SERVICE_FILE=/etc/systemd/system/wispd.service
+SERVICE=wispd
+REPO="LeoLTM/wisp"
+ARCHIVE=wisp-linux-armv6-release.tar.gz
 
 if [[ $EUID -ne 0 ]]; then
     echo "Error: run as root (e.g. sudo bash install.sh)" >&2
@@ -33,17 +33,17 @@ echo "==> Extracting..."
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP"
 
 echo "==> Installing binary..."
-install -m 755 "$TMP/sendspin-armv6" "$BINARY"
+install -m 755 "$TMP/wispd" "$BINARY"
 
 echo "==> Installing service file..."
-install -m 644 "$TMP/sendspin-armv6.service" "$SERVICE_FILE"
+install -m 644 "$TMP/wispd.service" "$SERVICE_FILE"
 systemctl daemon-reload
 
 if [[ -f "$CONFIG_FILE" ]]; then
     echo "==> Config already exists at $CONFIG_FILE — leaving it untouched."
 else
     echo "==> Installing default config..."
-    install -m 644 "$TMP/sendspin-armv6.conf" "$CONFIG_FILE"
+    install -m 644 "$TMP/wispd.conf" "$CONFIG_FILE"
     echo ""
     echo "IMPORTANT: Edit $CONFIG_FILE before starting the service."
     echo "  At minimum, set server_url to your Sendspin server address."

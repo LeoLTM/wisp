@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(sendspin-armv6 VERSION 0.1.9 LANGUAGES CXX)
+project(wisp VERSION 0.2.0 LANGUAGES CXX)
 
 include(FetchContent)
 
@@ -24,7 +24,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(sendspin-cpp)
 
-add_executable(sendspin-armv6
+add_executable(wispd
     src/main.cpp
     src/alsa_pipe_sink.cpp
     src/config.cpp
@@ -34,6 +34,6 @@ add_executable(sendspin-armv6
     src/ssd1306.cpp
 )
 
-target_link_libraries(sendspin-armv6 PRIVATE sendspin asound pthread)
-target_compile_features(sendspin-armv6 PRIVATE cxx_std_20)
-target_include_directories(sendspin-armv6 PRIVATE src)
+target_link_libraries(wispd PRIVATE sendspin asound pthread)
+target_compile_features(wispd PRIVATE cxx_std_20)
+target_include_directories(wispd PRIVATE src)
