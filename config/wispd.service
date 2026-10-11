@@ -1,9 +1,9 @@
 [Unit]
-Description=Sendspin ARMv6 Audio Player
+Description=wisp - lightweight Sendspin audio player (ARMv6)
 After=network-online.target sound.target
 Wants=network-online.target
 # Stop restarting after 5 rapid failures — prevents a crash-loop from
-# hammering the system indefinitely. Run: systemctl reset-failed sendspin-armv6
+# hammering the system indefinitely. Run: systemctl reset-failed wispd
 # to re-enable after resolving the issue.
 StartLimitIntervalSec=120
 StartLimitBurst=5
@@ -13,7 +13,7 @@ StartLimitBurst=5
 # timers needed for microsecond-level audio synchronisation.
 ExecStartPre=-/bin/sh -c 'echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor'
 ExecStopPost=-/bin/sh -c 'echo ondemand > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor'
-ExecStart=/usr/local/bin/sendspin-armv6
+ExecStart=/usr/local/bin/wispd
 Restart=on-failure
 RestartSec=10
 User=root
