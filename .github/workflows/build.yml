@@ -98,9 +98,9 @@ jobs:
         run: |
           mkdir -p package
           # Use cp -p to preserve file permissions (e.g. +x for executables)
-          cp -p build/sendspin-armv6 package/
-          cp -p config/sendspin-armv6.conf package/
-          cp -p config/sendspin-armv6.service package/
+          cp -p build/wispd package/
+          cp -p config/wispd.conf package/
+          cp -p config/wispd.service package/
           
           # Only include specific scripts in release packages
           if [ "${{ matrix.build_type }}" = "Release" ]; then
@@ -110,10 +110,10 @@ jobs:
           
           # Convert build type to lowercase for the filename
           BUILD_TYPE_LOWER=$(echo "${{ matrix.build_type }}" | tr '[:upper:]' '[:lower:]')
-          tar -czf "sendspin-armv6-linux-armv6-${BUILD_TYPE_LOWER}.tar.gz" -C package .
+          tar -czf "wisp-linux-armv6-${BUILD_TYPE_LOWER}.tar.gz" -C package .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sendspin-armv6-linux-armv6-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
-          path: sendspin-armv6-linux-armv6-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}.tar.gz
+          name: wisp-linux-armv6-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+          path: wisp-linux-armv6-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}.tar.gz
