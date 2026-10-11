@@ -1,14 +1,14 @@
 #!/bin/bash
-# Upgrade sendspin-armv6 to the latest release.
+# Upgrade wispd to the latest release.
 # Usage: curl -fsSL .../upgrade.sh | sudo bash
-# Your config at /etc/sendspin-armv6.conf is never modified.
+# Your config at /etc/wispd.conf is never modified.
 set -euo pipefail
 
-BINARY=/usr/local/bin/sendspin-armv6
-SERVICE_FILE=/etc/systemd/system/sendspin-armv6.service
-SERVICE=sendspin-armv6
-REPO="LeoLTM/sendspin-armv6"
-ARCHIVE=sendspin-armv6-linux-armv6-release.tar.gz
+BINARY=/usr/local/bin/wispd
+SERVICE_FILE=/etc/systemd/system/wispd.service
+SERVICE=wispd
+REPO="LeoLTM/wisp"
+ARCHIVE=wisp-linux-armv6-release.tar.gz
 
 if [[ $EUID -ne 0 ]]; then
     echo "Error: run as root (e.g. sudo bash upgrade.sh)" >&2
@@ -25,18 +25,33 @@ curl -fsSL "https://github.com/$REPO/releases/latest/download/$ARCHIVE" \
 echo "==> Extracting..."
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP"
 
+OLD_SERVICE=sendspin-armv6
+OLD_CONFIG=/etc/sendspin-armv6.conf
 echo "==> Stopping service..."
+if [[ -f /etc/systemd/system/$OLD_SERVICE.service ]]; then
+    echo "==> Migrating legacy $OLD_SERVICE installation..."
+    systemctl stop "$OLD_SERVICE" 2>/dev/null || true
+    systemctl disable "$OLD_SERVICE" 2>/dev/null || true
+    rm -f /etc/systemd/system/$OLD_SERVICE.service /usr/local/bin/sendspin-armv6
+    systemctl daemon-reload
+    systemctl reset-failed "$OLD_SERVICE" 2>/dev/null || true
+    if [[ -f "$OLD_CONFIG" && ! -f /etc/wispd.conf ]]; then
+        mv "$OLD_CONFIG" /etc/wispd.conf
+    fi
+    MIGRATED=true
+fi
 systemctl stop "$SERVICE" 2>/dev/null || true
 
 echo "==> Installing binary..."
-install -m 755 "$TMP/sendspin-armv6" "$BINARY"
+install -m 755 "$TMP/wispd" "$BINARY"
 
 echo "==> Installing service file..."
-install -m 644 "$TMP/sendspin-armv6.service" "$SERVICE_FILE"
+install -m 644 "$TMP/wispd.service" "$SERVICE_FILE"
 systemctl daemon-reload
 
 echo "==> Starting service..."
 systemctl reset-failed "$SERVICE" 2>/dev/null || true
+[[ "${MIGRATED:-false}" == true ]] && systemctl enable "$SERVICE"
 systemctl start "$SERVICE"
 
 echo ""

@@ -1,12 +1,12 @@
 #!/bin/bash
-# Uninstall sendspin-armv6 and remove the daemon completely.
+# Uninstall wispd and remove the daemon completely.
 # Usage: sudo bash uninstall.sh
 set -euo pipefail
 
-BINARY=/usr/local/bin/sendspin-armv6
-CONFIG_FILE=/etc/sendspin-armv6.conf
-SERVICE_FILE=/etc/systemd/system/sendspin-armv6.service
-SERVICE=sendspin-armv6
+BINARY=/usr/local/bin/wispd
+CONFIG_FILE=/etc/wispd.conf
+SERVICE_FILE=/etc/systemd/system/wispd.service
+SERVICE=wispd
 
 if [[ $EUID -ne 0 ]]; then
     echo "Error: run as root (e.g. sudo bash uninstall.sh)" >&2
