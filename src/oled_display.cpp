@@ -116,6 +116,11 @@ void OledDisplay::set_audio_format(const std::string& codec, uint32_t sample_rat
     update([&](DisplayState& s) { s.audio_format = std::move(text); });
 }
 
+void OledDisplay::set_pairing_code(const std::string& code) {
+    std::string ascii = to_display_ascii(code);
+    update([&](DisplayState& s) { s.pairing_code = std::move(ascii); });
+}
+
 void OledDisplay::thread_main() {
     // Drawing is never urgent: run at the lowest priority so the render
     // thread can't steal CPU from audio decoding on the single-core Pi.
@@ -136,7 +141,8 @@ void OledDisplay::thread_main() {
         auto now = clock::now();
         bool playing = s.stream_active && !s.paused;
         if (playing) last_activity_ = now;
-        bool sleep_due = config_.sleep_s > 0 && !playing &&
+        // Never blank a pairing code the operator has to read off the panel.
+        bool sleep_due = config_.sleep_s > 0 && !playing && s.pairing_code.empty() &&
                          now - last_activity_ >= std::chrono::seconds(config_.sleep_s);
         auto scroll_ms = static_cast<uint32_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(now - text_changed_).count());

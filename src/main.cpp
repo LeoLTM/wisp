@@ -9,6 +9,7 @@
 
 #include "alsa_pipe_sink.h"
 #include "config.h"
+#include "file_persistence.h"
 #include "oled_display.h"
 
 #include <atomic>
@@ -16,17 +17,17 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 #include <getopt.h>
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <thread>
-#include <unistd.h>
 
 using namespace sendspin;
 
 static constexpr const char* DEFAULT_CONFIG_PATH = "/etc/wispd.conf";
-static constexpr const char* VERSION = "0.2.0";
+static constexpr const char* VERSION = "0.3.0";
 
 static std::atomic<bool> running{true};
 
@@ -40,6 +41,15 @@ static bool parse_log_level(const std::string& str, LogLevel& level) {
     if (str == "debug") { level = LogLevel::DEBUG; return true; }
     if (str == "verbose") { level = LogLevel::VERBOSE; return true; }
     return false;
+}
+
+static const char* codec_name(SendspinCodecFormat codec) {
+    switch (codec) {
+        case SendspinCodecFormat::FLAC: return "FLAC";
+        case SendspinCodecFormat::OPUS: return "Opus";
+        case SendspinCodecFormat::PCM: return "PCM";
+        default: return "";
+    }
 }
 
 static void print_usage(const char* prog) {
@@ -83,6 +93,10 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Error: server_url is required in %s\n", config_path.c_str());
         return 1;
     }
+    if (cfg.state_dir.empty()) {
+        fprintf(stderr, "Error: state_dir must not be empty in %s\n", config_path.c_str());
+        return 1;
+    }
 
     // Apply log level
     LogLevel log_level = LogLevel::INFO;
@@ -104,6 +118,8 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "  Audio Device  : %s\n", cfg.device.empty() ? "System Default" : cfg.device.c_str());
     fprintf(stderr, "  Server URL    : %s\n", cfg.server_url.c_str());
     fprintf(stderr, "  Idle Timeout  : %s\n", cfg.idle_timeout_s == 0 ? "inaktiv" : (std::to_string(cfg.idle_timeout_s) + " seconds").c_str());
+    fprintf(stderr, "  State Dir     : %s\n", cfg.state_dir.c_str());
+    fprintf(stderr, "  Unpaired Play : %s\n", cfg.unpaired_access ? "allowed" : "pairing required");
     if (cfg.display == "none") {
         fprintf(stderr, "  Display       : disabled\n");
     } else {
@@ -125,21 +141,12 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "=================================================================\n\n");
     // --- END STARTUP LOGGING BLOCK ---
 
-    // Derive a unique, persistent client_id from /etc/machine-id (systemd).
-    // Falls back to hostname.  The spec requires this to be unique per device
-    // so that servers can track group membership and de-duplicate connections.
-    std::string client_id;
-    {
-        std::ifstream mid("/etc/machine-id");
-        std::getline(mid, client_id);
-    }
-    if (client_id.empty()) {
-        char hbuf[256] = {};
-        if (gethostname(hbuf, sizeof(hbuf)) == 0 && hbuf[0] != '\0') {
-            client_id = hbuf;
-        } else {
-            client_id = "wispd";
-        }
+    // The client_id is derived by sendspin-cpp from an X25519 keypair generated
+    // on first start.  The keypair and the pairing records live in state_dir,
+    // so the device keeps its identity and pairings across restarts.
+    FilePersistence persistence(cfg.state_dir);
+    if (!persistence.init()) {
+        return 1;
     }
 
     // Optional now-playing OLED.  Created before the client so it outlives
@@ -160,13 +167,22 @@ int main(int argc, char* argv[]) {
 
     // Configure client
     SendspinClientConfig client_config;
-    client_config.client_id = "wispd-" + client_id;
     client_config.name = cfg.name;
     client_config.product_name = "wisp";
     client_config.manufacturer = "wisp";
     client_config.software_version = VERSION;
+    // wispd only dials out to server_url, so run no WebSocket server of its
+    // own: no listening port, one thread less.
+    client_config.accept_inbound_connections = false;
+    // Offer the dynamic pairing code: six digits shown on the OLED (if any)
+    // and always written to the log.  The pairing token printed at startup
+    // works as well.
+    client_config.pairing_code_out_channels = {SendspinPairingCodeChannel::DISPLAY};
+    client_config.pairing_code_formats = {SendspinPairingCodeFormat::DIGITS};
 
     SendspinClient client(std::move(client_config));
+    client.set_persistence_provider(&persistence);
+    client.set_unpaired_access_enabled(cfg.unpaired_access);
 
     // Add player role with supported audio formats
     PlayerRoleConfig player_config;
@@ -184,15 +200,18 @@ int main(int argc, char* argv[]) {
     // playback time already accounts for the hardware buffer.  No additional
     // fixed delay compensation is required.
     player_config.fixed_delay_us = AlsaPipeSink::PIPELINE_DELAY_US;
-    if (cfg.initial_static_delay_ms >= 0) {
-        player_config.initial_static_delay_ms =
-            static_cast<uint16_t>(cfg.initial_static_delay_ms);
+    if (cfg.initial_output_delay_ms >= 0) {
+        // Only used until the server sets a delay; that one is persisted.
+        player_config.initial_output_delay_ms =
+            static_cast<uint16_t>(cfg.initial_output_delay_ms);
     }
     auto& player = client.add_player(std::move(player_config));
 
     // Track metadata is only requested from the server when a display will
-    // show it; headless players skip the role entirely.
-    MetadataRole* metadata = display ? &client.add_metadata() : nullptr;
+    // show it; headless players skip the role entirely.  The display shows
+    // title, artist and album, so the other text fields are not stored.
+    MetadataRole* metadata =
+        display ? &client.add_metadata({.album_artist = false, .artwork_url = false}) : nullptr;
 
     // Audio output via aplay pipe
     AlsaPipeSink audio_sink;
@@ -209,14 +228,17 @@ int main(int argc, char* argv[]) {
         int idle_timeout_s{0};
 
         AlsaPipeSink& sink;
-        PlayerRole& player;
         OledDisplay* display;  // null when the display is disabled
-        ArmPlayerListener(AlsaPipeSink& s, PlayerRole& p, int timeout_s, OledDisplay* d)
-            : idle_timeout_s(timeout_s), sink(s), player(p), display(d) {}
+        ArmPlayerListener(AlsaPipeSink& s, int timeout_s, OledDisplay* d)
+            : idle_timeout_s(timeout_s), sink(s), display(d) {}
 
-        size_t on_audio_write(uint8_t* data, size_t length,
-                              uint32_t timeout_ms) override {
-            return sink.write(data, length, timeout_ms);
+        // Runs on the sync task.  Each write carries the format of exactly
+        // these bytes; the sink (re)opens ALSA whenever it changes, which
+        // also covers an in-place stream/start with a new sample rate.
+        size_t on_audio_output(std::span<const uint8_t> pcm, const AudioFormat& format,
+                               uint32_t timeout_ms) override {
+            return sink.write(pcm.data(), pcm.size(), format.sample_rate, format.channels,
+                              format.bits_per_sample, timeout_ms);
         }
 
         void on_stream_start() override {
@@ -224,37 +246,13 @@ int main(int argc, char* argv[]) {
             this->stream_active = true;
             this->device_open = true;
             if (display) display->set_stream_active(true);
-            auto& params = player.get_current_stream_params();
-            if (params.sample_rate.has_value() && params.channels.has_value() &&
-                params.bit_depth.has_value()) {
-                sink.configure(*params.sample_rate, *params.channels,
-                               *params.bit_depth);
-            }
-            if (display) {
-                display->set_audio_format(codec_name(params.codec),
-                                          params.sample_rate.value_or(0),
-                                          params.bit_depth.value_or(0));
-            }
-        }
-
-        static const char* codec_name(const std::optional<SendspinCodecFormat>& codec) {
-            if (!codec.has_value()) return "";
-            switch (*codec) {
-                case SendspinCodecFormat::FLAC: return "FLAC";
-                case SendspinCodecFormat::OPUS: return "Opus";
-                case SendspinCodecFormat::PCM: return "PCM";
-                default: return "";
-            }
         }
 
         void on_stream_end() override {
             fprintf(stderr, ">>> Stream ended\n");
             this->stream_active = false;
             this->last_stream_end_time = std::chrono::steady_clock::now();
-            if (display) {
-                display->set_stream_active(false);
-                display->set_audio_format("", 0, 0);
-            }
+            if (display) display->set_stream_active(false);
 
             if (this->idle_timeout_s > 0) {
                 fprintf(stderr, ">>> Audio device will be released in %d seconds if idle\n", this->idle_timeout_s);
@@ -270,16 +268,63 @@ int main(int argc, char* argv[]) {
             sink.set_muted(muted);
             if (display) display->set_muted(muted);
         }
-        void on_static_delay_changed(uint16_t delay_ms) override {
-            fprintf(stderr, ">>> Static delay changed to %u ms\n", delay_ms);
+        void on_output_delay_changed(uint16_t delay_ms) override {
+            fprintf(stderr, ">>> Output delay changed to %u ms\n", delay_ms);
         }
     };
 
     struct ArmClientListener : SendspinClientListener {
+        OledDisplay* display;  // null when the display is disabled
+        explicit ArmClientListener(OledDisplay* d) : display(d) {}
+
         void on_time_sync_updated(float error) override {
             if (SendspinClient::get_log_level() >= LogLevel::DEBUG) {
                 fprintf(stderr, ">>> Time sync error: %.1f us\n", error);
             }
+        }
+
+        void on_pairing_attempt(std::string_view server_id) override {
+            fprintf(stderr, ">>> Pairing started with server %.*s\n",
+                    static_cast<int>(server_id.size()), server_id.data());
+        }
+        void on_paired(std::string_view server_id) override {
+            fprintf(stderr, ">>> Paired with server %.*s\n",
+                    static_cast<int>(server_id.size()), server_id.data());
+        }
+        void on_pairing_aborted(std::string_view server_id,
+                                SendspinPairAbortReason reason) override {
+            fprintf(stderr, ">>> Pairing with server %.*s aborted (reason %d)\n",
+                    static_cast<int>(server_id.size()), server_id.data(),
+                    static_cast<int>(reason));
+        }
+
+        // Fires once per pairing attempt; the code stays the same for the
+        // whole attempt (up to 2 minutes) and is always withdrawn afterwards.
+        void on_pairing_code(std::string_view code, SendspinPairingCodeFormat /*format*/) override {
+            // Only DIGITS is offered.  Shown 3-3 grouped, as the spec asks.
+            const std::string digits(code);
+            if (digits.size() == 6) {
+                fprintf(stderr, "\n>>> Pairing code: %s-%s  (enter it on the server)\n\n",
+                        digits.substr(0, 3).c_str(), digits.substr(3).c_str());
+            } else {
+                fprintf(stderr, "\n>>> Pairing code: %s  (enter it on the server)\n\n",
+                        digits.c_str());
+            }
+            if (display) display->set_pairing_code(digits);
+        }
+        void on_clear_pairing_code() override {
+            fprintf(stderr, ">>> Pairing code withdrawn\n");
+            if (display) display->set_pairing_code("");
+        }
+
+        // Only reached after 20 wrong codes in a row: further attempts are
+        // held until the operator acts.  The count is in memory, so a restart
+        // (which needs root on the device) is that deliberate action.
+        void on_open_pairing_window() override {
+            fprintf(stderr,
+                    ">>> Too many wrong pairing codes; new attempts are blocked.\n"
+                    "    Restart the player (sudo systemctl restart wispd) to try again,\n"
+                    "    or pair with the pairing token instead.\n");
         }
     };
 
@@ -287,9 +332,12 @@ int main(int argc, char* argv[]) {
         OledDisplay& display;
         explicit ArmMetadataListener(OledDisplay& d) : display(d) {}
 
-        void on_metadata(const ServerMetadataStateObject& m) override {
-            display.set_track(m.title.value_or(""), m.artist.value_or(""), m.album.value_or(""),
-                              m.progress.has_value(),
+        // Text arrives as string_views valid only during the callback; the
+        // display copies it.
+        void on_track_metadata(const TrackMetadata& m) override {
+            display.set_track(std::string(m.title.value_or("")),
+                              std::string(m.artist.value_or("")),
+                              std::string(m.album.value_or("")), m.progress.has_value(),
                               m.progress.has_value() && m.progress->playback_speed == 0);
         }
         void on_metadata_clear() override { display.clear_track(); }
@@ -299,16 +347,16 @@ int main(int argc, char* argv[]) {
         bool is_network_ready() override { return true; }
     };
 
-    ArmPlayerListener player_listener(audio_sink, player, cfg.idle_timeout_s, display.get());
+    ArmPlayerListener player_listener(audio_sink, cfg.idle_timeout_s, display.get());
     audio_sink.on_frames_played = [&player](uint32_t frames, int64_t timestamp) {
         player.notify_audio_played(frames, timestamp);
     };
 
-    ArmClientListener client_listener;
+    ArmClientListener client_listener(display.get());
     HostNetworkProvider network_provider;
 
     player.set_listener(&player_listener);
-    player.set_static_delay_adjustable(true);
+    player.set_output_delay_adjustable(true);
     client.set_listener(&client_listener);
     client.set_network_provider(&network_provider);
 
@@ -319,10 +367,18 @@ int main(int argc, char* argv[]) {
     }
     if (display) display->start();
 
-    // Start the WebSocket server
-    if (!client.start_server()) {
-        fprintf(stderr, "Failed to start server\n");
+    if (!client.start()) {
+        fprintf(stderr, "Failed to start the Sendspin client\n");
         return 1;
+    }
+
+    // With unpaired_access off, a server must pair with the player before it
+    // may play; with it on, pairing is optional.  The pairing token carries
+    // this player's identity and Pairing PSK: paste it into the server to pair.
+    fprintf(stderr, "Client ID     : %s\n", client.client_id().c_str());
+    if (auto token = client.client_pairing_token()) {
+        fprintf(stderr, "Pairing token : %.*s\n", static_cast<int>(token->size()),
+                token->data());
     }
 
     // Apply the configured startup volume before the first connection so the
@@ -345,6 +401,8 @@ int main(int argc, char* argv[]) {
     auto last_connect_attempt = clock::now() - RECONNECT_INTERVAL;
     static constexpr auto DISPLAY_POLL_INTERVAL = std::chrono::milliseconds(250);
     auto last_display_poll = clock::now();
+    bool was_connected = false;
+    bool was_paired = false;
 
     while (running.load()) {
         client.loop();
@@ -367,9 +425,37 @@ int main(int argc, char* argv[]) {
             display->set_connected(client.is_connected());
             display->set_progress(metadata->get_track_progress_ms(),
                                   metadata->get_track_duration_ms());
+            // Polled rather than set on stream start so an in-place format
+            // change is shown too.  nullopt while no stream is active.
+            if (auto info = player.stream_info()) {
+                display->set_audio_format(codec_name(info->codec), info->sample_rate,
+                                          info->bit_depth);
+            } else {
+                display->set_audio_format("", 0, 0);
+            }
         }
 
-        if (!client.is_connected()) {
+        // Log connection changes with the pairing state, so the log shows when
+        // a server can reach the player but has not paired it yet.
+        // is_paired() must be read before is_connected().
+        const bool paired = client.is_paired();
+        const bool connected = client.is_connected();
+        if (connected != was_connected || (connected && paired != was_paired)) {
+            if (!connected) {
+                fprintf(stderr, ">>> Disconnected from server\n");
+            } else if (paired) {
+                fprintf(stderr, ">>> Connected to server (paired)\n");
+            } else if (cfg.unpaired_access) {
+                fprintf(stderr, ">>> Connected to server (unpaired, guest access)\n");
+            } else {
+                fprintf(stderr, ">>> Connected to server (not paired yet: pair the player on "
+                                "the server, see README \"Pairing\")\n");
+            }
+            was_connected = connected;
+            was_paired = paired;
+        }
+
+        if (!connected) {
             auto now = clock::now();
             if (now - last_connect_attempt >= RECONNECT_INTERVAL) {
                 fprintf(stderr, "Connecting to %s...\n", cfg.server_url.c_str());
@@ -382,7 +468,9 @@ int main(int argc, char* argv[]) {
     }
 
     fprintf(stderr, "\nShutting down...\n");
-    client.disconnect(SendspinGoodbyeReason::SHUTDOWN);
+    // Sends client/goodbye (shutdown), joins the library's threads and
+    // flushes any pending state writes before returning.
+    client.stop();
     if (display) display->stop();
     return 0;
 }

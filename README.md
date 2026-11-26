@@ -19,6 +19,8 @@ Plays music through available ALSA devices. No controls, just audio output as a 
 >  curl -fsSL https://raw.githubusercontent.com/LeoLTM/wisp/main/scripts/install.sh \
 >  | sudo bash
 > ```
+>
+> Alternatively, you can flash the pre-built Pi Zero image by [warreth](https://github.com/warreth) as a plug-and-play solution, check out his project here: [wisp-pi-zero-w-image](https://github.com/warreth/wisp-pi-zero-w-image).
 
 ### 1. Download the binary
 
@@ -69,6 +71,40 @@ sudo systemctl enable --now wispd
 sudo systemctl status wispd
 journalctl -u wispd -f
 ```
+
+### 6. Pair with your server
+
+See [Pairing](#pairing) below. Until a server has paired with the player, it can connect but not play.
+
+## Pairing
+
+wisp speaks Sendspin 1.0, where every connection is encrypted. This needs a server that supports Sendspin 1.0: **Music Assistant 2.10.7 or newer** (including the current stable 2.10.x releases). Older servers can no longer connect.
+
+**By default no pairing is needed.** wisp offers *guest access* (`unpaired_access = true`), which Music Assistant approves automatically, so the player just shows up and plays. The connection is encrypted but not verified, and any Sendspin server on your network can play on the player.
+
+**Pairing** makes the connection verified, so only servers you paired can play. You can pair even with guest access on (in Music Assistant: the player's settings, *Reconfigure*). To *require* pairing, set `unpaired_access = false` in `/etc/wispd.conf` and restart the service: then a server can connect but not play until it is paired.
+
+The server can pair in one of two ways; which one it asks for depends on the server.
+
+**Pairing code (6 digits).** When the server starts pairing, the player makes up a six-digit code and shows it full-screen on the [OLED display](#oled-display-optional), if one is connected. It is always written to the log as well, so without a display, watch the log while you start pairing on the server:
+
+```bash
+journalctl -u wispd -f
+# >>> Pairing code: 042-735  (enter it on the server)
+```
+
+The code is new for every pairing attempt and stays valid for that attempt (up to 2 minutes). After 20 wrong codes in a row the player blocks further code attempts until you restart it (`sudo systemctl restart wispd`).
+
+**Pairing token.** At startup wisp logs a long token that never changes. Paste it (starting with `SP:`) into the server:
+
+```bash
+journalctl -u wispd | grep 'Pairing token'
+# Pairing token : SP:0OQNHOBCUPMT...
+```
+
+Pairing is a one-time step per server: the player remembers paired servers across restarts and upgrades.
+
+The player's identity and pairing records are stored in `/var/lib/wispd` (`state_dir`). Deleting that directory gives the player a new identity, so every server has to pair again.
 
 ## Audio output
 
@@ -161,6 +197,8 @@ display_i2c_address = 3c   # as shown by i2cdetect
 #display_rotate = 180      # if mounted upside down
 ```
 
+While a server is pairing, the display shows the six-digit [pairing code](#pairing) full-screen instead.
+
 The panel switches off after `display_sleep` seconds (default 300) without playback to prevent OLED burn-in, and wakes up when music starts.
 
 Drawing runs in a lowest-priority background thread and only sends changed parts of the screen, so it doesn't interfere with audio playback. If the display is missing or stops responding, the error is logged and the display is retried every 10 seconds while playback continues normally.
@@ -172,11 +210,14 @@ To turn the display off again, set `display = none` (or remove the line) and res
 | Key | Required | Default | Description |
 |---|---|---|---|
 | `server_url` | **yes** | — | WebSocket URL of the Sendspin server |
-| `name` | no | `wispd` | Friendly name shown in the Sendspin UI |
+| `name` | no | `wisp` | Friendly name shown in the Sendspin UI |
 | `log_level` | no | `info` | `none`, `error`, `warn`, `info`, `debug`, `verbose` |
 | `device` | no | Default system audio device (`aplay -L`) | ALSA device string for audio output (e.g. `plughw:1,0`) |
 | `initial_volume` | no | Server-controlled | Initial hardware volume at startup (0–100) |
+| `initial_output_delay` | no | `0` | Output delay in ms (0–5000) until the server sets one; the server's value is saved. Formerly `initial_static_delay`, which still works |
 | `idle_timeout` | no | `0` (disabled) | Idle timeout in seconds before releasing the audio device |
+| `unpaired_access` | no | `true` | Let servers play without [pairing](#pairing) (guest access); `false` requires pairing |
+| `state_dir` | no | `/var/lib/wispd` | Where the identity keypair and pairing records are stored |
 | `display` | no | `none` | OLED display: `none`, `ssd1306` or `sh1106` |
 | `display_i2c_bus` | no | `1` | I2C bus number (`/dev/i2c-N`) |
 | `display_i2c_address` | no | `3c` | I2C address in hex, as shown by `i2cdetect` |
@@ -188,6 +229,8 @@ To turn the display off again, set `display = none` (or remove the line) and res
 ## Upgrading
 
 Your config at `/etc/wispd.conf` is **never touched** during an upgrade.
+
+> **Upgrading to 0.3.0:** wisp now speaks Sendspin 1.0, which needs Music Assistant 2.10.7 or newer; update Music Assistant first. The player gets a new, cryptographic client ID, so Music Assistant sees it as a new device: check its settings (name, group, delay) and remove the old player entry. It plays without pairing by default; see [Pairing](#pairing) to require it.
 
 ### Upgrade script
 
@@ -229,8 +272,9 @@ sudo rm /usr/local/bin/wispd
 sudo rm /etc/systemd/system/wispd.service
 sudo systemctl daemon-reload
 
-# Optional: remove config file if you don't plan to reinstall or want to start fresh
+# Optional: remove config and pairing state if you don't plan to reinstall or want to start fresh
 sudo rm /etc/wispd.conf
+sudo rm -rf /var/lib/wispd
 ```
 
 ## Troubleshooting
@@ -251,6 +295,10 @@ Common causes:
 **Display stays blank** — check `journalctl -u wispd` for `Display:` messages. Make sure I2C is enabled and the address in `i2cdetect -y 1` matches `display_i2c_address`. A 1.3" panel that shows noise or is shifted by two pixels needs `display = sh1106`.
 
 **No audio / aplay errors** — run `aplay -l` to find the correct device name and set it with `device = plughw:X,Y` in the config.
+
+**`Noise handshake aborted` in the log, repeating every 5 seconds** — the server is too old to speak Sendspin 1.0 (typically with `psk_category missing` just before it). Update Music Assistant to 2.10.7 or newer.
+
+**Connects but doesn't play** — with `unpaired_access = false`, the server has probably not paired with the player yet. See [Pairing](#pairing). A server older than Music Assistant 2.10.7 cannot connect at all. The log says `Connected to server (not paired yet ...)` while the player waits to be paired.
 
 ## Building from source
 

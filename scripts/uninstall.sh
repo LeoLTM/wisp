@@ -5,6 +5,7 @@ set -euo pipefail
 
 BINARY=/usr/local/bin/wispd
 CONFIG_FILE=/etc/wispd.conf
+STATE_DIR=/var/lib/wispd
 SERVICE_FILE=/etc/systemd/system/wispd.service
 SERVICE=wispd
 
@@ -13,10 +14,10 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Prompt to keep or remove the config file.
+# Prompt to keep or remove the config file and the pairing state.
 KEEP_CONFIG=true
-if [[ -f "$CONFIG_FILE" ]]; then
-    echo -n "Keep config file at $CONFIG_FILE? [Y/n] "
+if [[ -f "$CONFIG_FILE" || -d "$STATE_DIR" ]]; then
+    echo -n "Keep config ($CONFIG_FILE) and pairing state ($STATE_DIR)? [Y/n] "
     read -r REPLY </dev/tty
     if [[ "$REPLY" =~ ^[Nn]$ ]]; then
         KEEP_CONFIG=false
@@ -36,10 +37,11 @@ echo "==> Removing binary..."
 rm -f "$BINARY"
 
 if [[ "$KEEP_CONFIG" == false ]]; then
-    echo "==> Removing config..."
+    echo "==> Removing config and pairing state..."
     rm -f "$CONFIG_FILE"
+    rm -rf "$STATE_DIR"
 else
-    echo "==> Config kept at $CONFIG_FILE"
+    echo "==> Config kept at $CONFIG_FILE, pairing state kept in $STATE_DIR"
 fi
 
 echo ""

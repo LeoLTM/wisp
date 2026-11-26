@@ -54,9 +54,24 @@ void Framebuffer::text(int x, int y, const std::string& s, int clip_x0, int clip
     }
 }
 
-int Framebuffer::text_width(const std::string& s) {
+void Framebuffer::text_scaled(int x, int y, const std::string& s, int scale) {
+    for (char c : s) {
+        if (c < font5x7::FIRST || c > font5x7::LAST) c = '?';
+        const uint8_t* glyph = font5x7::GLYPHS[c - font5x7::FIRST];
+        for (int col = 0; col < font5x7::GLYPH_WIDTH; ++col) {
+            for (int row = 0; row < font5x7::HEIGHT; ++row) {
+                if (glyph[col] & (1u << row)) {
+                    fill_rect(x + col * scale, y + row * scale, scale, scale);
+                }
+            }
+        }
+        x += font5x7::ADVANCE * scale;
+    }
+}
+
+int Framebuffer::text_width(const std::string& s, int scale) {
     if (s.empty()) return 0;
-    return static_cast<int>(s.size()) * font5x7::ADVANCE - 1;
+    return (static_cast<int>(s.size()) * font5x7::ADVANCE - 1) * scale;
 }
 
 // ---------------------------------------------------------------------------

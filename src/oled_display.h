@@ -51,6 +51,9 @@ class OledDisplay {
     /// Current stream format, e.g. ("FLAC", 44100, 16).  Empty codec with
     /// zero rate and depth clears it.
     void set_audio_format(const std::string& codec, uint32_t sample_rate, uint8_t bit_depth);
+    /// Show a dynamic pairing code full-screen until cleared with an empty
+    /// string.  The panel stays on while a code is shown.
+    void set_pairing_code(const std::string& code);
 
   private:
     using clock = std::chrono::steady_clock;

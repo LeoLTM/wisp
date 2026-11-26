@@ -29,8 +29,13 @@ class Framebuffer {
     /// scrolling work.  clip_x1 < 0 means the right edge of the screen.
     void text(int x, int y, const std::string& s, int clip_x0 = 0, int clip_x1 = -1);
 
-    /// Pixel width of s when drawn with text() (no trailing spacing column).
-    static int text_width(const std::string& s);
+    /// Draw text with every font pixel enlarged to a scale x scale block.
+    /// No clipping beyond the screen edges.
+    void text_scaled(int x, int y, const std::string& s, int scale);
+
+    /// Pixel width of s when drawn with text() (no trailing spacing column),
+    /// or with text_scaled() at the given scale.
+    static int text_width(const std::string& s, int scale = 1);
 
   private:
     int width_;

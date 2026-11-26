@@ -1,5 +1,7 @@
 #include "alsa_pipe_sink.h"
 
+#include "sendspin/client.h"
+
 #include <alsa/asoundlib.h>
 #include <pthread.h>
 #include <sched.h>
@@ -139,9 +141,9 @@ bool AlsaPipeSink::recover_xrun(int err) {
 // Stream lifecycle
 // ---------------------------------------------------------------------------
 
-bool AlsaPipeSink::configure(uint32_t sample_rate, uint8_t channels,
-                             uint8_t bits_per_sample) {
-    stop();
+bool AlsaPipeSink::configure_locked(uint32_t sample_rate, uint8_t channels,
+                                    uint8_t bits_per_sample) {
+    stop_locked();
 
     sample_rate_ = sample_rate;
     channels_ = channels;
@@ -149,10 +151,14 @@ bool AlsaPipeSink::configure(uint32_t sample_rate, uint8_t channels,
     bytes_per_frame_ = channels * (bits_per_sample / 8);
 
     ring_.resize(RING_CAPACITY);
-    ring_head_ = ring_tail_ = ring_used_ = 0;
+    {
+        std::lock_guard<std::mutex> lk(ring_mtx_);
+        ring_head_ = ring_tail_ = ring_used_ = 0;
+    }
     flush_requested_.store(false);
 
-    if (!open_alsa()) return false;
+    open_failed_ = !open_alsa();
+    if (open_failed_) return false;
 
     running_.store(true);
     playback_thread_ = std::thread([this] { playback_loop(); });
@@ -160,21 +166,37 @@ bool AlsaPipeSink::configure(uint32_t sample_rate, uint8_t channels,
 }
 
 void AlsaPipeSink::stop() {
-    if (running_.exchange(false)) {
-        // snd_pcm_drop() unblocks any pending snd_pcm_writei() in the
-        // playback thread so it observes running_ == false and exits.
-        if (pcm_) snd_pcm_drop(PCM);
-        ring_cv_.notify_all();
-        if (playback_thread_.joinable()) playback_thread_.join();
-    }
+    std::lock_guard<std::mutex> lk(lifecycle_mtx_);
+    stop_locked();
+}
+
+void AlsaPipeSink::stop_locked() {
+    running_.store(false);
+    // snd_pcm_drop() unblocks any pending snd_pcm_writei() in the playback
+    // thread so it observes running_ == false and exits.
+    if (pcm_) snd_pcm_drop(PCM);
+    ring_cv_.notify_all();
+    // Join even if the thread already stopped itself after a write error, so
+    // the next configure never assigns over a joinable std::thread.
+    if (playback_thread_.joinable()) playback_thread_.join();
     close_alsa();
     {
         std::lock_guard<std::mutex> lk(ring_mtx_);
         ring_head_ = ring_tail_ = ring_used_ = 0;
     }
+    // Forget the format so the next write() reopens the device.
+    sample_rate_ = 0;
+    channels_ = 0;
+    bits_per_sample_ = 0;
+    bytes_per_frame_ = 0;
+    open_failed_ = false;
 }
 
 void AlsaPipeSink::clear() {
+    {
+        std::lock_guard<std::mutex> lk(lifecycle_mtx_);
+        open_failed_ = false;  // let the next stream retry a device that failed to open
+    }
     {
         std::lock_guard<std::mutex> lk(ring_mtx_);
         ring_head_ = ring_tail_ = ring_used_ = 0;
@@ -256,9 +278,19 @@ void AlsaPipeSink::apply_volume(uint8_t* data, size_t length) {
 // Ring buffer producer (called from sendspin's network/decode thread)
 // ---------------------------------------------------------------------------
 
-size_t AlsaPipeSink::write(uint8_t* data, size_t length,
-                           uint32_t timeout_ms) {
-    if (!running_.load()) return length;  // discard if not running
+size_t AlsaPipeSink::write(const uint8_t* data, size_t length, uint32_t sample_rate,
+                           uint8_t channels, uint8_t bits_per_sample, uint32_t timeout_ms) {
+    {
+        std::lock_guard<std::mutex> lk(lifecycle_mtx_);
+        const bool same_format = sample_rate == sample_rate_ && channels == channels_ &&
+                                 bits_per_sample == bits_per_sample_;
+        // (Re)open on a format change, or when the device was closed (idle
+        // timeout, write error) unless opening it in this format just failed.
+        if (!same_format || (!running_.load() && !open_failed_)) {
+            configure_locked(sample_rate, channels, bits_per_sample);
+        }
+    }
+    if (!running_.load()) return length;  // discard if the device is unavailable
 
     auto deadline = std::chrono::steady_clock::now() +
                     std::chrono::milliseconds(timeout_ms);
@@ -375,10 +407,9 @@ void AlsaPipeSink::playback_loop() {
 
             int64_t delay_us = (static_cast<int64_t>(delay) * INT64_C(1000000))
                                / static_cast<int64_t>(sample_rate_);
-            int64_t now_us =
-                std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now().time_since_epoch())
-                    .count();
+            // Must be the library's own clock (CLOCK_MONOTONIC_RAW on Linux
+            // since sendspin-cpp v0.10.0), not std::chrono::steady_clock.
+            int64_t now_us = sendspin::SendspinClient::now_us();
 
             on_frames_played(static_cast<uint32_t>(offset), now_us + delay_us);
         }
