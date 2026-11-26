@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
@@ -30,6 +31,23 @@ static void parse_int_key(const std::string& path, int line_num, const std::stri
     } catch (const std::exception&) {
         fprintf(stderr, "%s:%d: invalid %s value '%s', ignoring\n", path.c_str(), line_num,
                 key.c_str(), value.c_str());
+    }
+}
+
+/// Parse a boolean key (true/false, yes/no, on/off, 1/0) into out.  Prints a
+/// warning and leaves out untouched on error.
+static void parse_bool_key(const std::string& path, int line_num, const std::string& key,
+                           const std::string& value, bool& out) {
+    std::string v = value;
+    std::transform(v.begin(), v.end(), v.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (v == "true" || v == "yes" || v == "on" || v == "1") {
+        out = true;
+    } else if (v == "false" || v == "no" || v == "off" || v == "0") {
+        out = false;
+    } else {
+        fprintf(stderr, "%s:%d: invalid %s value '%s' (expected true or false), ignoring\n",
+                path.c_str(), line_num, key.c_str(), value.c_str());
     }
 }
 
@@ -77,19 +95,13 @@ bool load_config(const std::string& path, Config& config) {
                 fprintf(stderr, "%s:%d: invalid initial_volume value '%s', ignoring\n",
                         path.c_str(), line_num, value.c_str());
             }
-        } else if (key == "initial_static_delay") {
-            try {
-                int v = std::stoi(value);
-                if (v < 0 || v > 5000) {
-                    fprintf(stderr, "%s:%d: initial_static_delay must be 0-5000 (ms), ignoring\n",
-                            path.c_str(), line_num);
-                } else {
-                    config.initial_static_delay_ms = v;
-                }
-            } catch (const std::exception&) {
-                fprintf(stderr, "%s:%d: invalid initial_static_delay value '%s', ignoring\n",
-                        path.c_str(), line_num, value.c_str());
-            }
+        } else if (key == "initial_output_delay" || key == "initial_static_delay") {
+            // initial_static_delay is the pre-0.3.0 name, still accepted.
+            parse_int_key(path, line_num, key, value, 0, 5000, config.initial_output_delay_ms);
+        } else if (key == "state_dir") {
+            config.state_dir = value;
+        } else if (key == "unpaired_access") {
+            parse_bool_key(path, line_num, key, value, config.unpaired_access);
         } else if (key == "idle_timeout") {
             try {
                 int v = std::stoi(value);

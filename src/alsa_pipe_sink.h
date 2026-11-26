@@ -30,13 +30,16 @@ class AlsaPipeSink {
     AlsaPipeSink(const AlsaPipeSink&) = delete;
     AlsaPipeSink& operator=(const AlsaPipeSink&) = delete;
 
-    /// Configure and (re)open the ALSA device for the given format.
-    bool configure(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample);
+    /// Write PCM data in the given format into the ring buffer.  Returns bytes
+    /// accepted.  Opens the ALSA device on the first write and reopens it when
+    /// the format differs from the previous write's.  If the device cannot be
+    /// opened, writes in that format are discarded until clear() or stop().
+    /// Called from the sendspin sync task only.
+    size_t write(const uint8_t* data, size_t length, uint32_t sample_rate, uint8_t channels,
+                 uint8_t bits_per_sample, uint32_t timeout_ms);
 
-    /// Write PCM data into the ring buffer.  Returns bytes accepted.
-    size_t write(uint8_t* data, size_t length, uint32_t timeout_ms);
-
-    /// Stop playback, close the device, and join the playback thread.
+    /// Stop playback, close the device, and join the playback thread.  The
+    /// next write() reopens the device.
     void stop();
 
     /// Flush ring buffer and ALSA queue without closing the device.
@@ -49,16 +52,26 @@ class AlsaPipeSink {
     void set_muted(bool muted);
 
     /// Set ALSA device name (e.g. "plughw:1,0"). Must be called before the
-    /// first configure(). Empty string uses the system default device.
+    /// first write(). Empty string uses the system default device.
     void set_device(const std::string& device);
 
     /// Callback for timing feedback — wired to player.notify_audio_played().
     std::function<void(uint32_t frames, int64_t timestamp)> on_frames_played;
 
   private:
+    // ---- Lifecycle (configure / stop may race between the sync task and the
+    //      main loop's idle timeout, so they are serialised) ----
+    std::mutex lifecycle_mtx_;
+    bool open_failed_{false};  // last configure failed; retry after clear()/stop()
+
+    /// (Re)open the ALSA device for the given format.  lifecycle_mtx_ held.
+    bool configure_locked(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample);
+    void stop_locked();
+
     // ---- ALSA (handle stored as void* to keep <alsa/asoundlib.h> out) ----
     void* pcm_{nullptr};
     std::string device_;
+    // Format of the last configure attempt; zero when the device is closed.
     uint32_t sample_rate_{0};
     uint8_t channels_{0};
     uint8_t bits_per_sample_{0};

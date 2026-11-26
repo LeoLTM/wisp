@@ -70,6 +70,27 @@ sudo systemctl status wispd
 journalctl -u wispd -f
 ```
 
+### 6. Pair with your server
+
+See [Pairing](#pairing) below. Until a server has paired with the player, it can connect but not play.
+
+## Pairing
+
+wisp speaks Sendspin 1.0: every connection is encrypted, and a server must **pair** with the player before it can play. This needs a server that supports Sendspin 1.0, e.g. **Music Assistant 2.11.0b4 or newer**; older servers can no longer connect.
+
+At startup wisp logs its client ID and a **pairing token**:
+
+```bash
+journalctl -u wispd | grep 'Pairing token'
+# Pairing token : SP:0OQNHOBCUPMT...
+```
+
+Paste the token (starting with `SP:`) into your server when it asks to pair the player. Pairing is a one-time step per server: the player remembers paired servers across restarts and upgrades.
+
+The player's identity and pairing records are stored in `/var/lib/wispd` (`state_dir`). Deleting that directory gives the player a new identity, so every server has to pair again.
+
+To skip pairing on a trusted network, set `unpaired_access = true` in `/etc/wispd.conf` and restart the service. Any server that can reach the player can then play on it.
+
 ## Audio output
 
 The **Pi Zero W has no built-in 3.5mm audio jack**. You need an external USB soundcard (or a DAC HAT). Any cheap USB audio adapter works.
@@ -172,11 +193,14 @@ To turn the display off again, set `display = none` (or remove the line) and res
 | Key | Required | Default | Description |
 |---|---|---|---|
 | `server_url` | **yes** | — | WebSocket URL of the Sendspin server |
-| `name` | no | `wispd` | Friendly name shown in the Sendspin UI |
+| `name` | no | `wisp` | Friendly name shown in the Sendspin UI |
 | `log_level` | no | `info` | `none`, `error`, `warn`, `info`, `debug`, `verbose` |
 | `device` | no | Default system audio device (`aplay -L`) | ALSA device string for audio output (e.g. `plughw:1,0`) |
 | `initial_volume` | no | Server-controlled | Initial hardware volume at startup (0–100) |
+| `initial_output_delay` | no | `0` | Output delay in ms (0–5000) until the server sets one; the server's value is saved. Formerly `initial_static_delay`, which still works |
 | `idle_timeout` | no | `0` (disabled) | Idle timeout in seconds before releasing the audio device |
+| `unpaired_access` | no | `false` | Let servers play without [pairing](#pairing) first |
+| `state_dir` | no | `/var/lib/wispd` | Where the identity keypair and pairing records are stored |
 | `display` | no | `none` | OLED display: `none`, `ssd1306` or `sh1106` |
 | `display_i2c_bus` | no | `1` | I2C bus number (`/dev/i2c-N`) |
 | `display_i2c_address` | no | `3c` | I2C address in hex, as shown by `i2cdetect` |
@@ -188,6 +212,8 @@ To turn the display off again, set `display = none` (or remove the line) and res
 ## Upgrading
 
 Your config at `/etc/wispd.conf` is **never touched** during an upgrade.
+
+> **Upgrading to 0.3.0:** wisp now speaks Sendspin 1.0, which needs Music Assistant 2.11.0b4 or newer. The player gets a new, cryptographic client ID, so the server sees it as a new device, and the server must [pair](#pairing) with it before it can play again.
 
 ### Upgrade script
 
@@ -229,8 +255,9 @@ sudo rm /usr/local/bin/wispd
 sudo rm /etc/systemd/system/wispd.service
 sudo systemctl daemon-reload
 
-# Optional: remove config file if you don't plan to reinstall or want to start fresh
+# Optional: remove config and pairing state if you don't plan to reinstall or want to start fresh
 sudo rm /etc/wispd.conf
+sudo rm -rf /var/lib/wispd
 ```
 
 ## Troubleshooting
@@ -251,6 +278,8 @@ Common causes:
 **Display stays blank** — check `journalctl -u wispd` for `Display:` messages. Make sure I2C is enabled and the address in `i2cdetect -y 1` matches `display_i2c_address`. A 1.3" panel that shows noise or is shifted by two pixels needs `display = sh1106`.
 
 **No audio / aplay errors** — run `aplay -l` to find the correct device name and set it with `device = plughw:X,Y` in the config.
+
+**Connects but doesn't play** — the server has probably not paired with the player yet. See [Pairing](#pairing). A server older than Music Assistant 2.11.0b4 cannot connect at all.
 
 ## Building from source
 
