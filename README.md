@@ -78,14 +78,25 @@ See [Pairing](#pairing) below. Until a server has paired with the player, it can
 
 wisp speaks Sendspin 1.0: every connection is encrypted, and a server must **pair** with the player before it can play. This needs a server that supports Sendspin 1.0, e.g. **Music Assistant 2.11.0b4 or newer**; older servers can no longer connect.
 
-At startup wisp logs its client ID and a **pairing token**:
+The server can pair in one of two ways; which one it asks for depends on the server.
+
+**Pairing code (6 digits).** When the server starts pairing, the player makes up a six-digit code and shows it full-screen on the [OLED display](#oled-display-optional), if one is connected. It is always written to the log as well, so without a display, watch the log while you start pairing on the server:
+
+```bash
+journalctl -u wispd -f
+# >>> Pairing code: 042-735  (enter it on the server)
+```
+
+The code is new for every pairing attempt and stays valid for that attempt (up to 2 minutes). After 20 wrong codes in a row the player blocks further code attempts until you restart it (`sudo systemctl restart wispd`).
+
+**Pairing token.** At startup wisp logs a long token that never changes. Paste it (starting with `SP:`) into the server:
 
 ```bash
 journalctl -u wispd | grep 'Pairing token'
 # Pairing token : SP:0OQNHOBCUPMT...
 ```
 
-Paste the token (starting with `SP:`) into your server when it asks to pair the player. Pairing is a one-time step per server: the player remembers paired servers across restarts and upgrades.
+Pairing is a one-time step per server: the player remembers paired servers across restarts and upgrades.
 
 The player's identity and pairing records are stored in `/var/lib/wispd` (`state_dir`). Deleting that directory gives the player a new identity, so every server has to pair again.
 
@@ -181,6 +192,8 @@ display_i2c_address = 3c   # as shown by i2cdetect
 #display_height = 32       # for 128x32 panels
 #display_rotate = 180      # if mounted upside down
 ```
+
+While a server is pairing, the display shows the six-digit [pairing code](#pairing) full-screen instead.
 
 The panel switches off after `display_sleep` seconds (default 300) without playback to prevent OLED burn-in, and wakes up when music starts.
 

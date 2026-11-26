@@ -152,6 +152,25 @@ bool render_64(const DisplayState& s, uint32_t scroll_ms, Framebuffer& fb) {
     return scrolling;
 }
 
+/// Full-screen pairing code: a caption and the code as large as fits.
+void render_pairing(const DisplayState& s, Framebuffer& fb) {
+    const std::string code = format_pairing_code(s.pairing_code);
+    int scale = 3;
+    while (scale > 1 && Framebuffer::text_width(code, scale) > fb.width()) --scale;
+    const int code_x = (fb.width() - Framebuffer::text_width(code, scale)) / 2;
+    const int code_h = 7 * scale;
+
+    if (fb.height() >= 64) {
+        fb.text(0, 0, "Pairing");
+        fb.hline(0, fb.width() - 1, 10);
+        centered(fb, 16, "Enter on server:", 0);
+        fb.text_scaled(code_x, 30, code, scale);
+    } else {
+        centered(fb, 0, "Pairing code", 0);
+        fb.text_scaled(code_x, fb.height() - code_h, code, scale);
+    }
+}
+
 bool render_32(const DisplayState& s, uint32_t scroll_ms, Framebuffer& fb) {
     if (s.title.empty()) {
         draw_header(fb, 0, s);
@@ -198,7 +217,16 @@ std::string format_audio_format(const std::string& codec, uint32_t sample_rate, 
     return out;
 }
 
+std::string format_pairing_code(const std::string& code) {
+    if (code.size() != 6) return code;
+    return code.substr(0, 3) + ' ' + code.substr(3);
+}
+
 bool render_display(const DisplayState& state, uint32_t scroll_ms, Framebuffer& fb) {
     fb.clear();
+    if (!state.pairing_code.empty()) {
+        render_pairing(state, fb);
+        return false;
+    }
     return fb.height() >= 64 ? render_64(state, scroll_ms, fb) : render_32(state, scroll_ms, fb);
 }

@@ -24,6 +24,10 @@ struct DisplayState {
 
     std::string audio_format;  // e.g. "FLAC 44.1kHz 16-bit"; empty when no stream
 
+    // Dynamic pairing code (six digits) while a server is pairing; empty
+    // otherwise.  Shown full-screen in place of everything else.
+    std::string pairing_code;
+
     bool operator==(const DisplayState&) const = default;
 };
 
@@ -31,7 +35,12 @@ struct DisplayState {
 /// "FLAC 44.1kHz 16-bit".  A zero rate or bit depth is left out.
 std::string format_audio_format(const std::string& codec, uint32_t sample_rate, uint8_t bit_depth);
 
-/// Draw the now-playing screen into fb (128x64 or 128x32).
+/// Group a six-digit pairing code as "042 735" for reading; other input is
+/// returned unchanged.
+std::string format_pairing_code(const std::string& code);
+
+/// Draw the now-playing screen into fb (128x64 or 128x32), or the pairing
+/// screen while state.pairing_code is set.
 ///
 /// scroll_ms is the time since the track text last changed; lines too long
 /// for the screen scroll as a marquee driven by it.

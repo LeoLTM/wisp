@@ -174,6 +174,11 @@ int main(int argc, char* argv[]) {
     // wispd only dials out to server_url, so run no WebSocket server of its
     // own: no listening port, one thread less.
     client_config.accept_inbound_connections = false;
+    // Offer the dynamic pairing code: six digits shown on the OLED (if any)
+    // and always written to the log.  The pairing token printed at startup
+    // works as well.
+    client_config.pairing_code_out_channels = {SendspinPairingCodeChannel::DISPLAY};
+    client_config.pairing_code_formats = {SendspinPairingCodeFormat::DIGITS};
 
     SendspinClient client(std::move(client_config));
     client.set_persistence_provider(&persistence);
@@ -269,6 +274,9 @@ int main(int argc, char* argv[]) {
     };
 
     struct ArmClientListener : SendspinClientListener {
+        OledDisplay* display;  // null when the display is disabled
+        explicit ArmClientListener(OledDisplay* d) : display(d) {}
+
         void on_time_sync_updated(float error) override {
             if (SendspinClient::get_log_level() >= LogLevel::DEBUG) {
                 fprintf(stderr, ">>> Time sync error: %.1f us\n", error);
@@ -288,6 +296,35 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, ">>> Pairing with server %.*s aborted (reason %d)\n",
                     static_cast<int>(server_id.size()), server_id.data(),
                     static_cast<int>(reason));
+        }
+
+        // Fires once per pairing attempt; the code stays the same for the
+        // whole attempt (up to 2 minutes) and is always withdrawn afterwards.
+        void on_pairing_code(std::string_view code, SendspinPairingCodeFormat /*format*/) override {
+            // Only DIGITS is offered.  Shown 3-3 grouped, as the spec asks.
+            const std::string digits(code);
+            if (digits.size() == 6) {
+                fprintf(stderr, "\n>>> Pairing code: %s-%s  (enter it on the server)\n\n",
+                        digits.substr(0, 3).c_str(), digits.substr(3).c_str());
+            } else {
+                fprintf(stderr, "\n>>> Pairing code: %s  (enter it on the server)\n\n",
+                        digits.c_str());
+            }
+            if (display) display->set_pairing_code(digits);
+        }
+        void on_clear_pairing_code() override {
+            fprintf(stderr, ">>> Pairing code withdrawn\n");
+            if (display) display->set_pairing_code("");
+        }
+
+        // Only reached after 20 wrong codes in a row: further attempts are
+        // held until the operator acts.  The count is in memory, so a restart
+        // (which needs root on the device) is that deliberate action.
+        void on_open_pairing_window() override {
+            fprintf(stderr,
+                    ">>> Too many wrong pairing codes; new attempts are blocked.\n"
+                    "    Restart the player (sudo systemctl restart wispd) to try again,\n"
+                    "    or pair with the pairing token instead.\n");
         }
     };
 
@@ -315,7 +352,7 @@ int main(int argc, char* argv[]) {
         player.notify_audio_played(frames, timestamp);
     };
 
-    ArmClientListener client_listener;
+    ArmClientListener client_listener(display.get());
     HostNetworkProvider network_provider;
 
     player.set_listener(&player_listener);
