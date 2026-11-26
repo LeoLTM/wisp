@@ -19,6 +19,8 @@ Plays music through available ALSA devices. No controls, just audio output as a 
 >  curl -fsSL https://raw.githubusercontent.com/LeoLTM/wisp/main/scripts/install.sh \
 >  | sudo bash
 > ```
+>
+> Alternatively, you can flash the pre-built Pi Zero image by [warreth](https://github.com/warreth) as a plug-and-play solution, check out his project here: [wisp-pi-zero-w-image](https://github.com/warreth/wisp-pi-zero-w-image).
 
 ### 1. Download the binary
 
