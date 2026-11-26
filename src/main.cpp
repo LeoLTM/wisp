@@ -171,6 +171,9 @@ int main(int argc, char* argv[]) {
     client_config.product_name = "wisp";
     client_config.manufacturer = "wisp";
     client_config.software_version = VERSION;
+    // wispd only dials out to server_url, so run no WebSocket server of its
+    // own: no listening port, one thread less.
+    client_config.accept_inbound_connections = false;
 
     SendspinClient client(std::move(client_config));
     client.set_persistence_provider(&persistence);
