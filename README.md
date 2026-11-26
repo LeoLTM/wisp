@@ -76,7 +76,7 @@ See [Pairing](#pairing) below. Until a server has paired with the player, it can
 
 ## Pairing
 
-wisp speaks Sendspin 1.0: every connection is encrypted, and a server must **pair** with the player before it can play. This needs a server that supports Sendspin 1.0, e.g. **Music Assistant 2.11.0b4 or newer**; older servers can no longer connect.
+wisp speaks Sendspin 1.0: every connection is encrypted, and a server must **pair** with the player before it can play. This needs a server that supports Sendspin 1.0: **Music Assistant 2.10.7 or newer** (including the current stable 2.10.x releases). Older servers can no longer connect.
 
 The server can pair in one of two ways; which one it asks for depends on the server.
 
@@ -226,7 +226,7 @@ To turn the display off again, set `display = none` (or remove the line) and res
 
 Your config at `/etc/wispd.conf` is **never touched** during an upgrade.
 
-> **Upgrading to 0.3.0:** wisp now speaks Sendspin 1.0, which needs Music Assistant 2.11.0b4 or newer. The player gets a new, cryptographic client ID, so the server sees it as a new device, and the server must [pair](#pairing) with it before it can play again.
+> **Upgrading to 0.3.0:** wisp now speaks Sendspin 1.0, which needs Music Assistant 2.10.7 or newer; update Music Assistant first. The player gets a new, cryptographic client ID, so the server sees it as a new device, and the server must [pair](#pairing) with it before it can play again.
 
 ### Upgrade script
 
@@ -292,7 +292,9 @@ Common causes:
 
 **No audio / aplay errors** — run `aplay -l` to find the correct device name and set it with `device = plughw:X,Y` in the config.
 
-**Connects but doesn't play** — the server has probably not paired with the player yet. See [Pairing](#pairing). A server older than Music Assistant 2.11.0b4 cannot connect at all.
+**`Noise handshake aborted` in the log, repeating every 5 seconds** — the server is too old to speak Sendspin 1.0 (typically with `psk_category missing` just before it). Update Music Assistant to 2.10.7 or newer.
+
+**Connects but doesn't play** — the server has probably not paired with the player yet. See [Pairing](#pairing). A server older than Music Assistant 2.10.7 cannot connect at all. The log says `Connected to server (not paired yet ...)` while the player waits to be paired.
 
 ## Building from source
 

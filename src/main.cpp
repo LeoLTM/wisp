@@ -401,6 +401,8 @@ int main(int argc, char* argv[]) {
     auto last_connect_attempt = clock::now() - RECONNECT_INTERVAL;
     static constexpr auto DISPLAY_POLL_INTERVAL = std::chrono::milliseconds(250);
     auto last_display_poll = clock::now();
+    bool was_connected = false;
+    bool was_paired = false;
 
     while (running.load()) {
         client.loop();
@@ -433,7 +435,27 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (!client.is_connected()) {
+        // Log connection changes with the pairing state, so the log shows when
+        // a server can reach the player but has not paired it yet.
+        // is_paired() must be read before is_connected().
+        const bool paired = client.is_paired();
+        const bool connected = client.is_connected();
+        if (connected != was_connected || (connected && paired != was_paired)) {
+            if (!connected) {
+                fprintf(stderr, ">>> Disconnected from server\n");
+            } else if (paired) {
+                fprintf(stderr, ">>> Connected to server (paired)\n");
+            } else if (cfg.unpaired_access) {
+                fprintf(stderr, ">>> Connected to server (unpaired, guest access)\n");
+            } else {
+                fprintf(stderr, ">>> Connected to server (not paired yet: pair the player on "
+                                "the server, see README \"Pairing\")\n");
+            }
+            was_connected = connected;
+            was_paired = paired;
+        }
+
+        if (!connected) {
             auto now = clock::now();
             if (now - last_connect_attempt >= RECONNECT_INTERVAL) {
                 fprintf(stderr, "Connecting to %s...\n", cfg.server_url.c_str());
