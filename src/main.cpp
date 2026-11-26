@@ -27,7 +27,7 @@
 using namespace sendspin;
 
 static constexpr const char* DEFAULT_CONFIG_PATH = "/etc/wispd.conf";
-static constexpr const char* VERSION = "0.2.0";
+static constexpr const char* VERSION = "0.3.0";
 
 static std::atomic<bool> running{true};
 
