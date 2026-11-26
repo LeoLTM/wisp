@@ -372,9 +372,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Since Sendspin 1.0 a server must pair with the player before it may
-    // play (unless unpaired_access is on).  The pairing token carries this
-    // player's identity and Pairing PSK: paste it into the server to pair.
+    // With unpaired_access off, a server must pair with the player before it
+    // may play; with it on, pairing is optional.  The pairing token carries
+    // this player's identity and Pairing PSK: paste it into the server to pair.
     fprintf(stderr, "Client ID     : %s\n", client.client_id().c_str());
     if (auto token = client.client_pairing_token()) {
         fprintf(stderr, "Pairing token : %.*s\n", static_cast<int>(token->size()),

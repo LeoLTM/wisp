@@ -76,7 +76,11 @@ See [Pairing](#pairing) below. Until a server has paired with the player, it can
 
 ## Pairing
 
-wisp speaks Sendspin 1.0: every connection is encrypted, and a server must **pair** with the player before it can play. This needs a server that supports Sendspin 1.0: **Music Assistant 2.10.7 or newer** (including the current stable 2.10.x releases). Older servers can no longer connect.
+wisp speaks Sendspin 1.0, where every connection is encrypted. This needs a server that supports Sendspin 1.0: **Music Assistant 2.10.7 or newer** (including the current stable 2.10.x releases). Older servers can no longer connect.
+
+**By default no pairing is needed.** wisp offers *guest access* (`unpaired_access = true`), which Music Assistant approves automatically, so the player just shows up and plays. The connection is encrypted but not verified, and any Sendspin server on your network can play on the player.
+
+**Pairing** makes the connection verified, so only servers you paired can play. You can pair even with guest access on (in Music Assistant: the player's settings, *Reconfigure*). To *require* pairing, set `unpaired_access = false` in `/etc/wispd.conf` and restart the service: then a server can connect but not play until it is paired.
 
 The server can pair in one of two ways; which one it asks for depends on the server.
 
@@ -99,8 +103,6 @@ journalctl -u wispd | grep 'Pairing token'
 Pairing is a one-time step per server: the player remembers paired servers across restarts and upgrades.
 
 The player's identity and pairing records are stored in `/var/lib/wispd` (`state_dir`). Deleting that directory gives the player a new identity, so every server has to pair again.
-
-To skip pairing on a trusted network, set `unpaired_access = true` in `/etc/wispd.conf` and restart the service. Any server that can reach the player can then play on it.
 
 ## Audio output
 
@@ -212,7 +214,7 @@ To turn the display off again, set `display = none` (or remove the line) and res
 | `initial_volume` | no | Server-controlled | Initial hardware volume at startup (0–100) |
 | `initial_output_delay` | no | `0` | Output delay in ms (0–5000) until the server sets one; the server's value is saved. Formerly `initial_static_delay`, which still works |
 | `idle_timeout` | no | `0` (disabled) | Idle timeout in seconds before releasing the audio device |
-| `unpaired_access` | no | `false` | Let servers play without [pairing](#pairing) first |
+| `unpaired_access` | no | `true` | Let servers play without [pairing](#pairing) (guest access); `false` requires pairing |
 | `state_dir` | no | `/var/lib/wispd` | Where the identity keypair and pairing records are stored |
 | `display` | no | `none` | OLED display: `none`, `ssd1306` or `sh1106` |
 | `display_i2c_bus` | no | `1` | I2C bus number (`/dev/i2c-N`) |
@@ -226,7 +228,7 @@ To turn the display off again, set `display = none` (or remove the line) and res
 
 Your config at `/etc/wispd.conf` is **never touched** during an upgrade.
 
-> **Upgrading to 0.3.0:** wisp now speaks Sendspin 1.0, which needs Music Assistant 2.10.7 or newer; update Music Assistant first. The player gets a new, cryptographic client ID, so the server sees it as a new device, and the server must [pair](#pairing) with it before it can play again.
+> **Upgrading to 0.3.0:** wisp now speaks Sendspin 1.0, which needs Music Assistant 2.10.7 or newer; update Music Assistant first. The player gets a new, cryptographic client ID, so Music Assistant sees it as a new device: check its settings (name, group, delay) and remove the old player entry. It plays without pairing by default; see [Pairing](#pairing) to require it.
 
 ### Upgrade script
 
@@ -294,7 +296,7 @@ Common causes:
 
 **`Noise handshake aborted` in the log, repeating every 5 seconds** — the server is too old to speak Sendspin 1.0 (typically with `psk_category missing` just before it). Update Music Assistant to 2.10.7 or newer.
 
-**Connects but doesn't play** — the server has probably not paired with the player yet. See [Pairing](#pairing). A server older than Music Assistant 2.10.7 cannot connect at all. The log says `Connected to server (not paired yet ...)` while the player waits to be paired.
+**Connects but doesn't play** — with `unpaired_access = false`, the server has probably not paired with the player yet. See [Pairing](#pairing). A server older than Music Assistant 2.10.7 cannot connect at all. The log says `Connected to server (not paired yet ...)` while the player waits to be paired.
 
 ## Building from source
 

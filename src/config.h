@@ -12,7 +12,7 @@ struct Config {
     int initial_output_delay_ms = -1;  // 0-5000 ms; -1 = no initial delay
     int idle_timeout_s = 0;            // 0 = disabled (device stays open permanently)
     std::string state_dir = "/var/lib/wispd";  // identity keypair and pairing records
-    bool unpaired_access = false;      // let servers play without pairing first
+    bool unpaired_access = true;       // let servers play without pairing (guest access)
 
     // Optional now-playing OLED display (disabled unless display is set)
     std::string display = "none";      // none, ssd1306, sh1106
